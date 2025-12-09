@@ -4,14 +4,19 @@ import { UploadArea } from './components/UploadArea';
 import { ResultDisplay } from './components/ResultDisplay';
 import { analyzeViolationImage } from './services/geminiService';
 import { getCurrentLocation } from './utils/geo';
-import { getJurisdictionEmail } from './utils/jurisdiction';
-import { ViolationReport, GeoLocation } from './types';
+import { getExifLocation } from './utils/exif';
+import { getJurisdictionDetails } from './utils/jurisdiction';
+import { getOfficialCitation } from './utils/citations';
+import { ViolationReport, GeoLocation, Jurisdiction } from './types';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 const VIOLATION_TYPES = [
   "Stopping in Bicycle Lane",
   "Using Phone Whilst Driving",
   "Running Red Light",
+  "Blocking Crosswalk",
+  "Improper Parking",
+  "Dangerous Driving",
   "Other"
 ];
 
@@ -25,27 +30,68 @@ export default function App() {
   const [violationType, setViolationType] = useState<string>("");
   const [customViolation, setCustomViolation] = useState<string>("");
 
-  const handleImageSelected = useCallback(async (base64Image: string) => {
+  const handleImageSelected = useCallback(async (file: File) => {
     setIsProcessing(true);
     setError(null);
 
+    // Read file to Base64 for Display/AI
+    const readFileAsBase64 = (f: File): Promise<string> => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(f);
+        });
+    };
+
     try {
-      // 1. Get Location (concurrently with image prep, but we await it)
+      const base64Image = await readFileAsBase64(file);
+
+      // 1. Get Location (Try EXIF first, then Device)
       let location: GeoLocation | null = null;
+      let locationSource: 'image' | 'device' | null = null;
+
       try {
-        location = await getCurrentLocation();
-      } catch (locErr) {
-        console.warn("Could not retrieve location:", locErr);
-        // Continue without location if permission denied
+        // Attempt EXIF extraction
+        const exifData = await getExifLocation(file);
+        if (exifData) {
+            location = {
+                latitude: exifData.latitude,
+                longitude: exifData.longitude,
+                accuracy: 0 // EXIF doesn't usually provide accuracy radius like GPS API
+            };
+            locationSource = 'image';
+        } else {
+            // Fallback to Device
+            try {
+                location = await getCurrentLocation();
+                locationSource = 'device';
+            } catch (locErr) {
+                 console.warn("Could not retrieve device location:", locErr);
+            }
+        }
+      } catch (e) {
+        console.error("Location strategy failed", e);
+        // Fallback attempt if EXIF crashed
+        if (!location) {
+             try {
+                location = await getCurrentLocation();
+                locationSource = 'device';
+             } catch (locErr) {}
+        }
       }
 
-      // 2. Determine Jurisdiction Email based on Location
-      let recipientEmail = "violations@usa.gov";
+      // 2. Determine Jurisdiction Details based on Location
+      let jurisdiction: Jurisdiction = {
+        state: "",
+        city: "",
+        email: "violations@usa.gov"
+      };
+
       if (location) {
         try {
-          recipientEmail = await getJurisdictionEmail(location.latitude, location.longitude);
-        } catch (emailErr) {
-          console.warn("Could not determine specific jurisdiction email:", emailErr);
+          jurisdiction = await getJurisdictionDetails(location.latitude, location.longitude);
+        } catch (jErr) {
+          console.warn("Could not determine jurisdiction:", jErr);
         }
       }
 
@@ -56,21 +102,34 @@ export default function App() {
       // If user selected something, use it. If not, fallback to AI detection.
       let finalUserViolation = analysis.violationType || "Unspecified Violation";
       
-      if (violationType === "Other") {
+      // If AI returns 'None observed' or similar, default to empty to force user input if not already selected
+      if (!violationType && (!analysis.violationType || analysis.violationType === "None observed")) {
+          finalUserViolation = "";
+      } else if (violationType === "Other") {
         finalUserViolation = customViolation.trim() || "Other (Unspecified)";
       } else if (violationType) {
         finalUserViolation = violationType;
       }
 
-      // 5. Construct Report
+      // 5. Look up Official Citation
+      const officialCitation = getOfficialCitation(
+        jurisdiction.state,
+        jurisdiction.city,
+        finalUserViolation
+      );
+
+      // 6. Construct Report
       const newReport: ViolationReport = {
         id: Math.random().toString(36).substr(2, 9).toUpperCase(),
         timestamp: new Date().toISOString(),
         location,
+        locationSource,
         analysis,
         userReportedViolation: finalUserViolation,
-        recipientEmail,
-        imageUrl: base64Image
+        recipientEmail: jurisdiction.email,
+        imageUrl: base64Image,
+        jurisdiction,
+        officialCitation
       };
 
       setReport(newReport);
@@ -97,7 +156,30 @@ export default function App() {
 
   const handleViolationUpdate = (newViolation: string) => {
     if (report) {
-      setReport({ ...report, userReportedViolation: newViolation });
+      // Re-evaluate citation based on new violation
+      const updatedCitation = getOfficialCitation(
+        report.jurisdiction?.state || "",
+        report.jurisdiction?.city || "",
+        newViolation
+      );
+
+      setReport({ 
+        ...report, 
+        userReportedViolation: newViolation,
+        officialCitation: updatedCitation
+      });
+    }
+  };
+
+  const handleLicensePlateUpdate = (newPlate: string) => {
+    if (report) {
+      setReport({
+        ...report,
+        analysis: {
+          ...report.analysis,
+          licensePlate: newPlate.toUpperCase()
+        }
+      });
     }
   };
 
@@ -121,7 +203,7 @@ export default function App() {
                 <ol className="list-decimal list-inside space-y-2 text-slate-600 text-sm">
                     <li><span className="font-medium text-slate-800">Spot the violation:</span> e.g. Vehicle illegally parked in a bike lane.</li>
                     <li><span className="font-medium text-slate-800">Snap a photo:</span> Ensure the license plate and the context (bike lane lines) are clearly visible.</li>
-                    <li><span className="font-medium text-slate-800">Upload & Review:</span> Upload the photo below. Our AI will extract the details.</li>
+                    <li><span className="font-medium text-slate-800">Upload & Review:</span> Upload the photo below. We attempt to read the location from the photo first.</li>
                     <li><span className="font-medium text-slate-800">Submit:</span> Send the pre-filled report email to your local public works department.</li>
                 </ol>
             </div>
@@ -153,8 +235,8 @@ export default function App() {
                <Loader2 className="w-16 h-16 text-red-600 animate-spin relative z-10" />
              </div>
              <div className="text-center space-y-2">
-                <h3 className="text-xl font-bold text-slate-800">Analyzing Image...</h3>
-                <p className="text-slate-500">Gemini is extracting vehicle details and finding local authorities.</p>
+                <h3 className="text-xl font-bold text-slate-800">Analyzing Evidence...</h3>
+                <p className="text-slate-500">Checking metadata, extracting plates, and locating authorities.</p>
              </div>
            </div>
         )}
@@ -212,6 +294,7 @@ export default function App() {
             isSubmitted={isSubmitted}
             onConfirm={handleConfirmReport}
             onViolationChange={handleViolationUpdate}
+            onLicensePlateChange={handleLicensePlateUpdate}
             violationTypes={VIOLATION_TYPES}
           />
         )}

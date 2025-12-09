@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ViolationReport } from '../types';
-import { Download, MapPin, Clock, AlertCircle, CheckCircle, Send, FileCheck, AlertTriangle, Pencil, Mail } from 'lucide-react';
+import { Download, MapPin, Clock, AlertCircle, CheckCircle, Send, FileCheck, AlertTriangle, Pencil, Mail, Smartphone, Image as ImageIcon, Scale, Save } from 'lucide-react';
 
 interface ResultDisplayProps {
   report: ViolationReport;
@@ -8,6 +8,7 @@ interface ResultDisplayProps {
   isSubmitted: boolean;
   onConfirm: () => void;
   onViolationChange: (value: string) => void;
+  onLicensePlateChange: (value: string) => void;
   violationTypes: string[];
 }
 
@@ -17,8 +18,18 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
   isSubmitted, 
   onConfirm, 
   onViolationChange,
+  onLicensePlateChange,
   violationTypes
 }) => {
+  const [isEditingPlate, setIsEditingPlate] = useState(false);
+  const plateInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditingPlate && plateInputRef.current) {
+      plateInputRef.current.focus();
+    }
+  }, [isEditingPlate]);
+
   const downloadJson = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
     const downloadAnchorNode = document.createElement('a');
@@ -36,11 +47,16 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
       ? `https://www.google.com/maps/search/?api=1&query=${report.location.latitude},${report.location.longitude}`
       : "Location not available";
 
+    let citationText = "";
+    if (report.officialCitation) {
+      citationText = `\nOfficial Citation Match: ${report.officialCitation.code} - ${report.officialCitation.description} (${report.officialCitation.jurisdiction})`;
+    }
+
     const bodyContent = `To Whom It May Concern,
 
 I would like to report a traffic violation.
 
-Violation: ${report.userReportedViolation}
+Violation: ${report.userReportedViolation}${citationText}
 License Plate: ${report.analysis.licensePlate}
 Vehicle Description: ${report.analysis.vehicleDescription}
 Location: ${googleMapsUrl}
@@ -61,8 +77,7 @@ Concerned Citizen`;
 
   const isUnknownPlate = report.analysis.licensePlate === 'UNKNOWN';
 
-  // Determine if the current violation is one of the standard predefined types (excluding "Other" literal if it's in list)
-  // If the user's string is NOT in the list, it's considered "Custom" (i.e. Other was selected)
+  // Determine if the current violation is one of the standard predefined types
   const isCustomViolation = !violationTypes.some(t => t !== 'Other' && t === report.userReportedViolation);
   
   // Value to show in dropdown
@@ -124,12 +139,42 @@ Concerned Citizen`;
 
         {/* Main Analysis Badge */}
         <div className="flex flex-col sm:flex-row gap-6 justify-between items-start sm:items-center border-b border-slate-100 pb-6">
-          <div>
+          <div className="w-full sm:w-auto">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Detected License Plate</h2>
-            <div className={`text-4xl sm:text-5xl font-bold font-mono tracking-widest ${isUnknownPlate ? 'text-orange-500' : 'text-slate-900'}`}>
-              {report.analysis.licensePlate}
-            </div>
-            {isUnknownPlate && (
+            
+            {isEditingPlate && !isSubmitted ? (
+              <div className="flex items-center gap-2">
+                 <input
+                    ref={plateInputRef}
+                    type="text"
+                    value={report.analysis.licensePlate}
+                    onChange={(e) => onLicensePlateChange(e.target.value)}
+                    onBlur={() => setIsEditingPlate(false)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsEditingPlate(false)}
+                    className="text-4xl sm:text-5xl font-bold font-mono tracking-widest text-slate-900 bg-slate-50 border-b-2 border-red-500 outline-none w-full sm:w-auto uppercase"
+                 />
+                 <button onClick={() => setIsEditingPlate(false)} className="bg-slate-100 p-2 rounded hover:bg-slate-200">
+                    <Save className="w-5 h-5 text-slate-600" />
+                 </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 group">
+                <div className={`text-4xl sm:text-5xl font-bold font-mono tracking-widest ${isUnknownPlate ? 'text-orange-500' : 'text-slate-900'}`}>
+                  {report.analysis.licensePlate}
+                </div>
+                {!isSubmitted && (
+                  <button 
+                    onClick={() => setIsEditingPlate(true)}
+                    className="p-1.5 rounded-full hover:bg-slate-100 text-slate-300 hover:text-red-500 transition-colors"
+                    title="Edit License Plate"
+                  >
+                    <Pencil className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            )}
+            
+            {isUnknownPlate && !isEditingPlate && (
                <p className="text-xs text-orange-600 mt-2 flex items-center">
                  <AlertTriangle className="w-3 h-3 mr-1" />
                  Could not clearly identify plate
@@ -154,9 +199,25 @@ Concerned Citizen`;
               <MapPin className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-semibold text-slate-900">Location</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-slate-900">Location</h4>
+                {report.locationSource === 'image' && (
+                  <span className="flex items-center text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium" title="Location extracted from image metadata">
+                     <ImageIcon className="w-3 h-3 mr-1" /> From Photo
+                  </span>
+                )}
+                {report.locationSource === 'device' && (
+                  <span className="flex items-center text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-medium" title="Location from your device GPS">
+                     <Smartphone className="w-3 h-3 mr-1" /> From Device
+                  </span>
+                )}
+              </div>
+              
               {report.location ? (
                 <div className="text-sm text-slate-600 mt-1 space-y-1">
+                  <p className="font-medium text-slate-800">
+                    {report.jurisdiction?.city && report.jurisdiction?.state ? `${report.jurisdiction.city}, ${report.jurisdiction.state}` : ''}
+                  </p>
                   <p>Lat: {report.location.latitude.toFixed(6)}</p>
                   <p>Long: {report.location.longitude.toFixed(6)}</p>
                   <a 
@@ -167,6 +228,11 @@ Concerned Citizen`;
                   >
                     View on Map &rarr;
                   </a>
+                  {report.locationSource === 'device' && (
+                    <p className="text-[10px] text-amber-600 mt-1 italic">
+                       *Photo had no GPS data. Using your current location.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-slate-400 italic">Location data unavailable</p>
@@ -221,8 +287,8 @@ Concerned Citizen`;
                       type="text"
                       value={report.userReportedViolation}
                       onChange={(e) => onViolationChange(e.target.value)}
-                      className="w-full text-lg font-medium text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-shadow placeholder:text-slate-300 animate-fade-in"
-                      placeholder="Specify violation details..."
+                      className="w-full text-lg font-medium text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-shadow placeholder:text-slate-300 animate-fade-in italic"
+                      placeholder="Add Violation Here"
                       autoFocus
                     />
                   )}
@@ -235,6 +301,31 @@ Concerned Citizen`;
                 <p className="text-lg font-medium text-slate-900 mt-1">
                   {report.userReportedViolation}
                 </p>
+              )}
+              
+              {/* Official Citation Card */}
+              {report.officialCitation && (
+                <div className="mt-3 bg-indigo-50 border border-indigo-100 rounded-lg p-3 animate-fade-in">
+                   <div className="flex items-start gap-2">
+                      <Scale className="w-4 h-4 text-indigo-600 mt-0.5" />
+                      <div>
+                         <p className="text-xs font-bold text-indigo-800 uppercase tracking-wide">
+                           {report.officialCitation.jurisdiction} Official Citation
+                         </p>
+                         <p className="text-sm font-semibold text-slate-800 mt-1">
+                            {report.officialCitation.code}
+                         </p>
+                         <p className="text-sm text-slate-700">
+                           {report.officialCitation.description}
+                         </p>
+                         {report.officialCitation.fine && (
+                            <p className="text-xs font-medium text-indigo-600 mt-1">
+                              Estimated Fine: {report.officialCitation.fine}
+                            </p>
+                         )}
+                      </div>
+                   </div>
+                </div>
               )}
               
               {report.analysis.violationType && report.analysis.violationType !== 'None observed' && (

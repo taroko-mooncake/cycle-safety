@@ -21,7 +21,7 @@ export const analyzeViolationImage = async (base64Image: string): Promise<Analys
             },
           },
           {
-            text: "Analyze this image for a traffic violation report. Extract the license plate number clearly. Describe the vehicle (color, make, model guess). Identify potential violations (e.g., parking in red zone, speeding, expired tags, etc). If no license plate is visible, state 'UNKNOWN'.",
+            text: "Analyze this image for a traffic violation report. Extract the license plate number clearly. Describe the vehicle (color, make, model guess). Identify potential violations. Preferred terms: 'Stopping in Bicycle Lane', 'Blocking Crosswalk', 'Running Red Light', 'Using Phone Whilst Driving', 'Improper Parking', 'Dangerous Driving'. If no license plate is visible, state 'UNKNOWN'.",
           },
         ],
       },
@@ -41,7 +41,7 @@ export const analyzeViolationImage = async (base64Image: string): Promise<Analys
             },
             violationType: {
               type: Type.STRING,
-              description: "The apparent violation type based on visual context, or 'None observed' if unclear.",
+              description: "The apparent violation type. Prefer standard terms like 'Stopping in Bicycle Lane', 'Blocking Crosswalk'. Return 'None observed' if unclear.",
             },
           },
           required: ["licensePlate", "vehicleDescription"],

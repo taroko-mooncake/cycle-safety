@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Upload, Camera, Image as ImageIcon } from 'lucide-react';
 
 interface UploadAreaProps {
-  onImageSelected: (base64: string) => void;
+  onImageSelected: (file: File) => void;
   isProcessing: boolean;
 }
 
@@ -12,12 +12,7 @@ export const UploadArea: React.FC<UploadAreaProps> = ({ onImageSelected, isProce
 
   const handleFile = (file: File) => {
     if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        onImageSelected(base64String);
-      };
-      reader.readAsDataURL(file);
+      onImageSelected(file);
     }
   };
 

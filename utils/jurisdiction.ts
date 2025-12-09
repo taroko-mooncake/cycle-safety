@@ -1,3 +1,5 @@
+import { Jurisdiction } from '../types';
+
 const EMAIL_MAPPING: Record<string, string> = {
   "District of Columbia": "dpw@dc.gov",
   "Washington": "dpw@dc.gov",
@@ -15,9 +17,15 @@ const EMAIL_MAPPING: Record<string, string> = {
 
 const DEFAULT_EMAIL = "violations@usa.gov";
 
-export async function getJurisdictionEmail(lat: number, lon: number): Promise<string> {
+export async function getJurisdictionDetails(lat: number, lon: number): Promise<Jurisdiction> {
+  const result: Jurisdiction = {
+    state: "",
+    city: "",
+    email: DEFAULT_EMAIL
+  };
+
   try {
-    // Using OpenStreetMap Nominatim for reverse geocoding (free, requires User-Agent)
+    // Using OpenStreetMap Nominatim for reverse geocoding
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`,
       {
@@ -28,7 +36,7 @@ export async function getJurisdictionEmail(lat: number, lon: number): Promise<st
     );
 
     if (!response.ok) {
-      return DEFAULT_EMAIL;
+      return result;
     }
 
     const data = await response.json();
@@ -38,19 +46,31 @@ export async function getJurisdictionEmail(lat: number, lon: number): Promise<st
     const city = address.city || address.town || address.village || "";
     const state = address.state || "";
 
-    // Specific City Logic
-    if (city === "Washington" && state === "District of Columbia") return "dpw@dc.gov";
-    if (city === "New York") return "311@nyc.gov";
-    if (city === "San Francisco") return "311@sfgov.org";
+    result.city = city;
+    result.state = state;
+
+    // Specific City Logic for Email
+    if (city === "Washington" && state === "District of Columbia") {
+        result.email = "dpw@dc.gov";
+        return result;
+    }
+    if (city === "New York") {
+        result.email = "311@nyc.gov";
+        return result;
+    }
+    if (city === "San Francisco") {
+        result.email = "311@sfgov.org";
+        return result;
+    }
 
     // State Logic
     if (state && EMAIL_MAPPING[state]) {
-      return EMAIL_MAPPING[state];
+      result.email = EMAIL_MAPPING[state];
     }
 
-    return DEFAULT_EMAIL;
+    return result;
   } catch (error) {
     console.error("Error fetching jurisdiction:", error);
-    return DEFAULT_EMAIL;
+    return result;
   }
 }
