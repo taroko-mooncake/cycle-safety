@@ -4,7 +4,7 @@ import { UploadArea } from './components/UploadArea';
 import { ResultDisplay } from './components/ResultDisplay';
 import { analyzeViolationImage } from './services/geminiService';
 import { getCurrentLocation } from './utils/geo';
-import { getExifLocation } from './utils/exif';
+import { getExifData } from './utils/exif';
 import { getJurisdictionDetails } from './utils/jurisdiction';
 import { getOfficialCitation } from './utils/citations';
 import { ViolationReport, GeoLocation, Jurisdiction } from './types';
@@ -46,22 +46,35 @@ export default function App() {
     try {
       const base64Image = await readFileAsBase64(file);
 
-      // 1. Get Location (Try EXIF first, then Device)
+      // 1. Get Metadata (Location & Time) from EXIF
       let location: GeoLocation | null = null;
       let locationSource: 'image' | 'device' | null = null;
+      let timestamp = new Date().toISOString();
+      let timestampSource: 'metadata' | 'submission' = 'submission';
 
       try {
-        // Attempt EXIF extraction
-        const exifData = await getExifLocation(file);
+        const exifData = await getExifData(file);
+        
         if (exifData) {
-            location = {
-                latitude: exifData.latitude,
-                longitude: exifData.longitude,
-                accuracy: 0 // EXIF doesn't usually provide accuracy radius like GPS API
-            };
-            locationSource = 'image';
-        } else {
-            // Fallback to Device
+            // Handle Location
+            if (exifData.latitude !== undefined && exifData.longitude !== undefined) {
+                location = {
+                    latitude: exifData.latitude,
+                    longitude: exifData.longitude,
+                    accuracy: 0
+                };
+                locationSource = 'image';
+            }
+
+            // Handle Timestamp
+            if (exifData.dateTime) {
+                timestamp = exifData.dateTime;
+                timestampSource = 'metadata';
+            }
+        }
+
+        // Fallback to Device Location if EXIF location missing
+        if (!location) {
             try {
                 location = await getCurrentLocation();
                 locationSource = 'device';
@@ -70,7 +83,7 @@ export default function App() {
             }
         }
       } catch (e) {
-        console.error("Location strategy failed", e);
+        console.error("Metadata extraction strategy failed", e);
         // Fallback attempt if EXIF crashed
         if (!location) {
              try {
@@ -121,7 +134,8 @@ export default function App() {
       // 6. Construct Report
       const newReport: ViolationReport = {
         id: Math.random().toString(36).substr(2, 9).toUpperCase(),
-        timestamp: new Date().toISOString(),
+        timestamp,
+        timestampSource,
         location,
         locationSource,
         analysis,

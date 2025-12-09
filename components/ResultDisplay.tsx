@@ -151,7 +151,7 @@ Concerned Citizen`;
                     onChange={(e) => onLicensePlateChange(e.target.value)}
                     onBlur={() => setIsEditingPlate(false)}
                     onKeyDown={(e) => e.key === 'Enter' && setIsEditingPlate(false)}
-                    className="text-4xl sm:text-5xl font-bold font-mono tracking-widest text-slate-900 bg-slate-50 border-b-2 border-red-500 outline-none w-full sm:w-auto uppercase"
+                    className="text-4xl sm:text-5xl font-bold font-mono tracking-widest text-slate-900 bg-slate-50 border-b-2 border-red-50 outline-none w-full sm:w-auto uppercase"
                  />
                  <button onClick={() => setIsEditingPlate(false)} className="bg-slate-100 p-2 rounded hover:bg-slate-200">
                     <Save className="w-5 h-5 text-slate-600" />
@@ -245,12 +245,19 @@ Concerned Citizen`;
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-semibold text-slate-900">Timestamp</h4>
+              <div className="flex items-center gap-2">
+                 <h4 className="font-semibold text-slate-900">Timestamp</h4>
+                 {report.timestampSource === 'metadata' && (
+                  <span className="flex items-center text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium" title="Time extracted from image metadata">
+                     <ImageIcon className="w-3 h-3 mr-1" /> From Photo
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-slate-600 mt-1">
                 {new Date(report.timestamp).toLocaleString()}
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                Captured at time of report
+                {report.timestampSource === 'metadata' ? 'Taken from photo metadata' : 'Captured at time of report'}
               </p>
             </div>
           </div>

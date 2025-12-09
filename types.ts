@@ -26,6 +26,7 @@ export interface Jurisdiction {
 export interface ViolationReport {
   id: string;
   timestamp: string;
+  timestampSource?: 'metadata' | 'submission';
   location: GeoLocation | null;
   locationSource: 'image' | 'device' | 'manual' | null;
   analysis: AnalysisResult;

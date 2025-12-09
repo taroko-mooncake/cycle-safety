@@ -1,6 +1,6 @@
-// Utility to parse EXIF data from JPEG images to extract GPS coordinates
+// Utility to parse EXIF data from JPEG images to extract GPS coordinates and Timestamp
 
-export async function getExifLocation(file: File): Promise<{ latitude: number; longitude: number } | null> {
+export async function getExifData(file: File): Promise<{ latitude?: number; longitude?: number; dateTime?: string } | null> {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const view = new DataView(arrayBuffer);
@@ -24,7 +24,6 @@ export async function getExifLocation(file: File): Promise<{ latitude: number; l
       if (marker === 0xFFE1) {
         if (offset + 1 >= length) break;
         // Length includes the 2 bytes for length itself
-        // const app1Length = view.getUint16(offset, false); 
         offset += 2;
 
         if (view.getUint32(offset, false) !== 0x45786966) {
@@ -42,8 +41,9 @@ export async function getExifLocation(file: File): Promise<{ latitude: number; l
         
         // Parse IFD0
         const tags = parseIFD(view, tiffStart, ifdOffset, littleEndian);
+        const result: { latitude?: number; longitude?: number; dateTime?: string } = {};
         
-        // GPS Info Tag is 34853 (0x8825)
+        // 1. GPS Info Tag is 34853 (0x8825)
         if (tags[0x8825]) {
           const gpsOffset = tags[0x8825] as number;
           const gpsTags = parseIFD(view, tiffStart, gpsOffset, littleEndian);
@@ -58,8 +58,36 @@ export async function getExifLocation(file: File): Promise<{ latitude: number; l
           );
 
           if (lat !== null && lon !== null) {
-            return { latitude: lat, longitude: lon };
+            result.latitude = lat;
+            result.longitude = lon;
           }
+        }
+
+        // 2. DateTime Parsing
+        // Check Exif SubIFD (0x8769) for DateTimeOriginal (0x9003)
+        if (tags[0x8769]) {
+            const exifOffset = tags[0x8769] as number;
+            const exifTags = parseIFD(view, tiffStart, exifOffset, littleEndian);
+            
+            // 0x9003 is DateTimeOriginal, 0x9004 is DateTimeDigitized
+            const dateStr = (exifTags[0x9003] || exifTags[0x9004]) as string;
+            if (dateStr && typeof dateStr === 'string') {
+                const isoStr = parseExifDate(dateStr);
+                if (isoStr) result.dateTime = isoStr;
+            }
+        }
+
+        // Fallback to IFD0 DateTime (0x0132) which is usually Modification Date, but better than nothing
+        if (!result.dateTime && tags[0x0132]) {
+             const dateStr = tags[0x0132] as string;
+             if (dateStr && typeof dateStr === 'string') {
+                const isoStr = parseExifDate(dateStr);
+                if (isoStr) result.dateTime = isoStr;
+             }
+        }
+        
+        if (Object.keys(result).length > 0) {
+            return result;
         }
         
         return null;
@@ -87,12 +115,8 @@ function parseIFD(view: DataView, tiffStart: number, dirOffset: number, littleEn
     const type = view.getUint16(entryOffset + 2, littleEndian);
     const count = view.getUint32(entryOffset + 4, littleEndian);
     
-    // Values of types 1, 3, 4 (byte, short, long) fit in the 4 bytes if count is small enough
-    // Types 5 (rational) are offsets
-    
-    // We strictly only care about a few tags for GPS, mostly Rationals (type 5) and Strings/Refs (type 2)
-    
-    if (type === 5) { // Rational
+    // Type 5 (Rational) = 2x Long (8 bytes)
+    if (type === 5) { 
        const valueOffset = view.getUint32(entryOffset + 8, littleEndian);
        const rationals = [];
        for (let j = 0; j < count; j++) {
@@ -101,12 +125,28 @@ function parseIFD(view: DataView, tiffStart: number, dirOffset: number, littleEn
          rationals.push(num / den);
        }
        tags[tag] = rationals;
-    } else if (type === 2) { // ASCII
-       // For GPS refs, it's just 2 bytes usually 'N\0'
-       const valueOffset = count > 4 ? view.getUint32(entryOffset + 8, littleEndian) : (entryOffset + 8);
-       // Simple char read
-       const charCode = count > 4 ? view.getUint8(tiffStart + valueOffset) : view.getUint8(valueOffset);
-       tags[tag] = String.fromCharCode(charCode);
+    } else if (type === 2) { // ASCII string
+       // If size <= 4, it's stored in the offset field
+       let charCodes: number[] = [];
+       if (count <= 4) {
+           for (let j = 0; j < count; j++) {
+               // The offset field is 4 bytes. 
+               // For ASCII, we read byte by byte from entryOffset + 8
+               charCodes.push(view.getUint8(entryOffset + 8 + j));
+           }
+       } else {
+           const valueOffset = view.getUint32(entryOffset + 8, littleEndian);
+           for (let j = 0; j < count; j++) {
+               if (tiffStart + valueOffset + j < view.byteLength) {
+                 charCodes.push(view.getUint8(tiffStart + valueOffset + j));
+               }
+           }
+       }
+       // Remove null terminator if present
+       if (charCodes.length > 0 && charCodes[charCodes.length - 1] === 0) {
+           charCodes.pop();
+       }
+       tags[tag] = String.fromCharCode(...charCodes);
     } else if (type === 4 || type === 3) {
        // Offset or value
        tags[tag] = view.getUint32(entryOffset + 8, littleEndian);
@@ -124,4 +164,15 @@ function convertDMSToDD(dms: number[], ref: string): number | null {
     dd = dd * -1;
   }
   return dd;
+}
+
+function parseExifDate(exifDate: string): string | null {
+    // Expected format "YYYY:MM:DD HH:MM:SS"
+    const match = exifDate.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+    if (match) {
+        const [_, y, m, d, h, min, s] = match;
+        // Construct ISO string
+        return `${y}-${m}-${d}T${h}:${min}:${s}`;
+    }
+    return null;
 }
