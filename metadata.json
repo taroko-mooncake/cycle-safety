@@ -1,0 +1,7 @@
+{
+  "name": "Cycle Safety USA",
+  "description": "A tool to capture bike lane violations, automatically extracting license plates and generating incident reports for safer streets.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
