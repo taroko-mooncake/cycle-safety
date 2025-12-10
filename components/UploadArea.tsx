@@ -7,7 +7,8 @@ interface UploadAreaProps {
 }
 
 export const UploadArea: React.FC<UploadAreaProps> = ({ onImageSelected, isProcessing }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
   const handleFile = (file: File) => {
@@ -46,8 +47,27 @@ export const UploadArea: React.FC<UploadAreaProps> = ({ onImageSelected, isProce
 
   return (
     <div className="w-full">
+      {/* Input for Gallery (Generic File Picker) */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleChange}
+      />
+      
+      {/* Input for Camera (Forces Camera on Mobile) */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment" 
+        className="hidden"
+        onChange={handleChange}
+      />
+
       <div
-        className={`relative group border-2 border-dashed rounded-2xl p-8 sm:p-12 transition-all duration-300 ease-in-out text-center cursor-pointer
+        className={`relative group border-2 border-dashed rounded-2xl p-6 sm:p-10 transition-all duration-300 ease-in-out text-center
           ${dragActive ? 'border-red-500 bg-red-50' : 'border-slate-300 hover:border-red-400 hover:bg-slate-50'}
           ${isProcessing ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -55,30 +75,43 @@ export const UploadArea: React.FC<UploadAreaProps> = ({ onImageSelected, isProce
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment" // Hints mobile browsers to use the camera
-          className="hidden"
-          onChange={handleChange}
-        />
-
-        <div className="flex flex-col items-center justify-center space-y-4">
-          <div className="p-4 bg-white rounded-full shadow-md group-hover:shadow-lg transition-shadow">
-             <Camera className="w-10 h-10 text-slate-700 group-hover:text-red-600 transition-colors" />
-          </div>
+        <div className="flex flex-col items-center justify-center space-y-6">
+          
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-slate-900">
               Upload Violation Photo
             </h3>
             <p className="text-slate-500 text-sm max-w-xs mx-auto">
-              Tap to capture or drag and drop an image file here. We'll extract the details automatically.
+              Drag and drop an image here or choose an option below.
             </p>
           </div>
-          <div className="flex gap-4 text-xs font-medium text-slate-400">
+
+          <div className="flex w-full gap-4 max-w-md justify-center">
+            {/* Take Photo Button */}
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              className="flex-1 flex flex-col items-center justify-center p-4 bg-white border-2 border-slate-100 hover:border-red-200 hover:bg-red-50 rounded-xl transition-all group active:scale-95 shadow-sm"
+            >
+               <div className="p-3 bg-red-100 rounded-full mb-2 group-hover:bg-red-200 transition-colors">
+                  <Camera className="w-6 h-6 text-red-600" />
+               </div>
+               <span className="font-medium text-slate-800 text-sm">Take Photo</span>
+            </button>
+
+            {/* Gallery Button */}
+            <button
+              onClick={() => galleryInputRef.current?.click()}
+              className="flex-1 flex flex-col items-center justify-center p-4 bg-white border-2 border-slate-100 hover:border-blue-200 hover:bg-blue-50 rounded-xl transition-all group active:scale-95 shadow-sm"
+            >
+               <div className="p-3 bg-blue-100 rounded-full mb-2 group-hover:bg-blue-200 transition-colors">
+                  <ImageIcon className="w-6 h-6 text-blue-600" />
+               </div>
+               <span className="font-medium text-slate-800 text-sm">From Gallery</span>
+            </button>
+          </div>
+
+          <div className="flex gap-4 text-xs font-medium text-slate-400 pt-2">
             <span className="flex items-center"><ImageIcon className="w-3 h-3 mr-1" /> JPEG, PNG</span>
             <span className="flex items-center"><Upload className="w-3 h-3 mr-1" /> Max 10MB</span>
           </div>

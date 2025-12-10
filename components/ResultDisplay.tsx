@@ -131,7 +131,7 @@ Concerned Citizen`;
              <div>
                <h3 className="font-semibold text-sm sm:text-base">Review Report Details</h3>
                <p className="text-xs sm:text-sm text-amber-700 mt-1">
-                 Review below. Clicking confirm will open a Gmail draft to <span className="font-mono font-medium bg-amber-100 px-1 rounded text-amber-900">{report.recipientEmail}</span>
+                 Review below, then open a Gmail draft to <span className="font-mono font-medium bg-amber-100 px-1 rounded text-amber-900">{report.recipientEmail}</span>
                </p>
              </div>
           </div>
