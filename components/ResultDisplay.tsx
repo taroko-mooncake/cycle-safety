@@ -23,6 +23,9 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
 }) => {
   const [isEditingPlate, setIsEditingPlate] = useState(false);
   const plateInputRef = useRef<HTMLInputElement>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [sentEmailBody, setSentEmailBody] = useState<string | null>(null);
+  const [sentMethod, setSentMethod] = useState<'auto' | 'draft' | null>(null);
 
   useEffect(() => {
     if (isEditingPlate && plateInputRef.current) {
@@ -40,9 +43,9 @@ export const ResultDisplay: React.FC<ResultDisplayProps> = ({
     downloadAnchorNode.remove();
   };
 
-  const handleGmailLaunch = () => {
-    const subject = encodeURIComponent(`Traffic Violation Report: ${report.analysis.licensePlate} - ${report.userReportedViolation}`);
-    
+  const buildEmailContent = () => {
+    const subject = `Traffic Violation Report: ${report.analysis.licensePlate} - ${report.userReportedViolation}`;
+
     const googleMapsUrl = report.location 
       ? `https://www.google.com/maps/search/?api=1&query=${report.location.latitude},${report.location.longitude}`
       : "Location not available";
@@ -66,13 +69,68 @@ Please find the photo evidence attached to this email.
 
 Sincerely,
 Concerned Citizen`;
+    return { subject, bodyContent };
+  };
 
+  const handleGmailLaunch = () => {
+    const { subject, bodyContent } = buildEmailContent();
+    const encodedSubject = encodeURIComponent(subject);
     const body = encodeURIComponent(bodyContent);
     // Open Gmail web interface draft
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${report.recipientEmail}&su=${subject}&body=${body}`;
-    
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${report.recipientEmail}&su=${encodedSubject}&body=${body}`;
+
+    setSentEmailBody(bodyContent);
+    setSentMethod('draft');
     window.open(gmailUrl, '_blank');
     onConfirm(); // Update UI to submitted state
+  };
+
+  const handleSendAutomatically = async () => {
+    const backendBaseUrl = import.meta.env.VITE_GMAIL_SERVER_URL || 'http://localhost:3001';
+    const { subject, bodyContent } = buildEmailContent();
+
+    setIsSending(true);
+    try {
+      const response = await fetch(`${backendBaseUrl}/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to: report.recipientEmail,
+          subject,
+          body: bodyContent,
+          imageDataUrl: report.imageUrl
+        })
+      });
+
+      if (response.status === 401) {
+        const authResp = await fetch(`${backendBaseUrl}/auth/url`);
+        if (authResp.ok) {
+          const data = await authResp.json();
+          if (data.url) {
+            window.open(data.url, '_blank');
+            alert('Please authorize Gmail in the new tab, then return here and click "Send Automatically" again.');
+          }
+        } else {
+          alert('Unable to start Gmail authorization. Please try again or use the Gmail draft option.');
+        }
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to send email');
+      }
+
+      setSentEmailBody(bodyContent);
+      setSentMethod('auto');
+      onConfirm();
+    } catch (err) {
+      console.error('Automatic Gmail send failed', err);
+      alert('Could not send email automatically. You can still use the Gmail draft option.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const isUnknownPlate = report.analysis.licensePlate === 'UNKNOWN';
@@ -111,7 +169,28 @@ Concerned Citizen`;
       <div className="p-6 sm:p-8 space-y-8">
         
         {/* Status Banners */}
-        {isSubmitted ? (
+        {isSubmitted && sentMethod === 'auto' && sentEmailBody ? (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3 text-green-800 shadow-sm animate-fade-in">
+             <div className="flex items-start sm:items-center space-x-3">
+               <div className="bg-green-100 p-2 rounded-full flex-shrink-0">
+                 <Send className="w-5 h-5 text-green-600" />
+               </div>
+               <div>
+                 <h3 className="font-semibold text-sm sm:text-base">Report Email Sent via Gmail</h3>
+                 <p className="text-xs sm:text-sm text-green-700 mt-1">
+                   Your violation report was sent automatically to{' '}
+                   <span className="font-mono font-medium bg-green-100 px-1 rounded text-green-900">
+                     {report.recipientEmail}
+                   </span>
+                   .
+                 </p>
+               </div>
+             </div>
+             <div className="bg-white border border-green-100 rounded-lg p-3 text-xs text-slate-800 font-mono overflow-x-auto whitespace-pre-wrap">
+               {sentEmailBody}
+             </div>
+          </div>
+        ) : isSubmitted ? (
           <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start sm:items-center space-x-3 text-green-800 shadow-sm animate-fade-in">
              <div className="bg-green-100 p-2 rounded-full flex-shrink-0">
                <Send className="w-5 h-5 text-green-600" />
@@ -351,14 +430,22 @@ Concerned Citizen`;
             <>
               <div className="flex-1 flex flex-col gap-2">
                 <button
-                  onClick={handleGmailLaunch}
-                  className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl active:scale-95"
+                  onClick={handleSendAutomatically}
+                  disabled={isSending}
+                  className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed text-white font-medium py-3 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl active:scale-95"
                 >
                   <Mail className="w-5 h-5" />
-                  Compose in Gmail
+                  {isSending ? 'Sending…' : 'Send Automatically via Gmail'}
+                </button>
+                <button
+                  onClick={handleGmailLaunch}
+                  className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium py-2 px-6 rounded-xl transition-all active:scale-95"
+                >
+                  <Mail className="w-4 h-4" />
+                  Open Gmail Draft Instead
                 </button>
                 <p className="text-[10px] text-center text-slate-500">
-                  Opens Gmail draft. You must attach photo manually.
+                  Automatic sending requires one-time Gmail authorization. Draft option is always available.
                 </p>
               </div>
               

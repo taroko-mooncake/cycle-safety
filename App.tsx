@@ -315,7 +315,7 @@ export default function App() {
       </main>
 
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-slate-400 text-sm">
-        <p>© {new Date().getFullYear()} Cycle Safety USA. Powered by Google Gemini.</p>
+        <p>© {new Date().getFullYear()} Cycle Safety USA.</p>
       </footer>
     </div>
   );
