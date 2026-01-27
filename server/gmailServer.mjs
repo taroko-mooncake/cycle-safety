@@ -17,10 +17,11 @@ app.use(express.json({ limit: '10mb' }));
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } = process.env;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
-  console.warn(
-    'Gmail OAuth environment variables are not fully configured. ' +
+  console.error(
+    'FATAL ERROR: Gmail OAuth environment variables are not fully configured. ' +
     'Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in your .env file.'
   );
+  process.exit(1);
 }
 
 const oauth2Client = new google.auth.OAuth2(
