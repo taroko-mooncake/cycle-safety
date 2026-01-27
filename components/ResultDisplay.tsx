@@ -119,7 +119,9 @@ Concerned Citizen`;
       }
 
       if (!response.ok) {
-        throw new Error('Failed to send email');
+        const errorData = await response.json().catch(() => null);
+        const errorMessage = errorData?.error || `Request failed with status ${response.status}`;
+        throw new Error(errorMessage);
       }
 
       setSentEmailBody(bodyContent);
